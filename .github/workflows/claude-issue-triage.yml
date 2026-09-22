@@ -99,27 +99,118 @@ jobs:
                  diagnóstico de una sola línea en vez del informe completo.
 
             4. Redacta el diagnóstico en un archivo temporal (para evitar problemas de
-               escaping de markdown) con esta estructura exacta, empezando siempre por el
-               marcador HTML en la primera línea:
+               escaping de markdown) usando Markdown enriquecido que GitHub renderiza con
+               colores e iconos: tablas, listas de tareas, bloques `<details>` colapsables y,
+               sobre todo, los **alerts nativos de GitHub** (`> [!NOTE]`, `> [!TIP]`,
+               `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`) — cada uno se renderiza con su
+               propio color e icono, así que elígelos por significado, no al azar:
+               - `NOTE` → resumen / información neutral.
+               - `TIP` → sugerencia u observación positiva.
+               - `IMPORTANT` → información faltante o algo que el autor debe saber.
+               - `WARNING` → causa raíz no verificada (hipótesis).
+               - `CAUTION` → riesgos, efectos colaterales o issue inválido/spam.
+
+               Sigue esta estructura exacta, empezando siempre por el marcador HTML en la
+               primera línea (va SOLO en esa línea, nunca dentro de un alert ni de una tabla):
 
                ```
                <!-- claude-triage -->
                ## 🔍 Diagnóstico automático
 
-               **Resumen** — 1-2 frases reformulando lo que pide o reporta el issue.
-               **Tipo** — bug / mejora / duda / documentación / inválido.
-               **Labels aplicadas** — lista con una línea de justificación para cada una.
-               **Zona del código** — funciones y `archivo:línea` implicados.
-               **Causa raíz probable** — para bugs; marca explícitamente como hipótesis si
-               no la puedes verificar solo leyendo el código.
-               **Reproducción** — pasos concretos; si el issue no da suficientes datos, di
-               qué falta.
-               **Criterios de aceptación** — lista verificable de cuándo se considera resuelto.
-               **Esbozo de solución** — qué cambiar y dónde, sin escribir el parche completo.
-               **Riesgos / efectos colaterales** — por ejemplo, tocar `BLOCK`/`COLS`/`ROWS`
-               obliga a ajustar el `<canvas>` en `index.html`.
-               **Información faltante** — si aplica, preguntas concretas al autor del issue.
+               > [!NOTE]
+               > **Resumen:** 1-2 frases reformulando lo que pide o reporta el issue.
+
+               ### 🏷️ Clasificación
+
+               | Campo | Valor |
+               |---|---|
+               | **Tipo** | {emoji según tipo} {bug / mejora / duda / documentación / inválido} |
+               | **Labels aplicadas** | `label1`, `label2`, ... |
+
+               Emoji por tipo: 🐛 bug · ✨ mejora · ❔ duda · 📚 documentación · 🚫 inválido.
+
+               <details>
+               <summary>📋 Justificación de cada label</summary>
+
+               - `label1` — por qué aplica.
+               - `label2` — por qué aplica.
+
+               </details>
+
+               ### 🗺️ Zona del código
+
+               | Archivo | Línea | Función / contexto |
+               |---|---|---|
+               | `game.js` | `123` | `nombreFuncion()` |
+
+               (Toda referencia debe ser `archivo:línea` real, verificada leyendo el código —
+               nunca inventada. Si no aplica ninguna zona de código, omite esta sección.)
+
+               ### 🧬 Causa raíz probable
+
+               Solo para bugs. Texto directo si la verificaste leyendo el código; si es una
+               hipótesis sin confirmar, envuélvela en:
+
+               > [!WARNING]
+               > Hipótesis sin verificar en runtime: ...
+
+               ### 🔁 Reproducción
+
+               1. Paso concreto.
+               2. Paso concreto.
+
+               Si el issue no da datos suficientes, añade:
+
+               > [!IMPORTANT]
+               > Faltan datos para reproducir: ...
+
+               ### ✅ Criterios de aceptación
+
+               - [ ] Criterio verificable 1.
+               - [ ] Criterio verificable 2.
+
+               ### 🛠️ Esbozo de solución
+
+               <details>
+               <summary>Ver propuesta técnica</summary>
+
+               Qué cambiar y dónde, sin escribir el parche completo.
+
+               </details>
+
+               ### ⚠️ Riesgos / efectos colaterales
+
+               > [!CAUTION]
+               > Por ejemplo, tocar `BLOCK`/`COLS`/`ROWS` obliga a ajustar el `<canvas>` en
+               > `index.html`.
+
+               ### ❓ Información faltante
+
+               > [!IMPORTANT]
+               > Preguntas concretas al autor del issue (omite esta sección si no aplica).
+
+               ---
+               <sub>🤖 Generado automáticamente por Claude — este comentario se actualiza en
+               cada edición del issue.</sub>
                ```
+
+               Notas de formato:
+               - Omite las secciones que no apliquen (por ejemplo "Causa raíz probable" y
+                 "Reproducción" en un issue de tipo documentación), pero conserva siempre el
+                 marcador inicial, el título `## 🔍 Diagnóstico automático`, el resumen en
+                 `[!NOTE]` y el pie de página final.
+               - No anides un alert dentro de una tabla ni de un `<details>`; GitHub no los
+                 renderiza bien en esos contextos.
+               - Si el issue es spam, duplicado o inválido (paso 3), usa esta versión corta
+                 en vez del informe completo, manteniendo el marcador:
+
+                 ```
+                 <!-- claude-triage -->
+                 ## 🔍 Diagnóstico automático
+
+                 > [!CAUTION]
+                 > **Inválido/duplicado:** razón en una frase. Label aplicada: `label`.
+                 ```
 
             5. Publica el diagnóstico como comentario único y actualizable:
                - Busca si ya existe un comentario tuyo anterior con el marcador:
