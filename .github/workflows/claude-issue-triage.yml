@@ -1,0 +1,138 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+concurrency:
+  group: triage-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    if: github.event.sender.type != 'Bot'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Issue Triage
+        id: claude-triage
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowedTools "Read,Grep,Glob,Bash(gh label list:*),Bash(gh label create:*),Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh api:*)"'
+          prompt: |
+            Estás haciendo triage automático de un issue en el repo ${{ github.repository }}.
+            Issue número: ${{ github.event.issue.number }}
+
+            ## Contexto del proyecto
+
+            Es "Classic Tetris", un juego de Tetris en JavaScript vanilla + HTML5 Canvas + CSS,
+            sin dependencias, sin build, sin package.json ni suite de tests. Tres archivos:
+
+            - `index.html` — DOM: `<canvas id="board">` (300x600, grid 10x20 a 30px/celda),
+              `<canvas id="next-canvas">` para la pieza siguiente, HUD de score/lines/level,
+              overlay de pausa/game-over.
+            - `style.css` — tema retro/arcade oscuro.
+            - `game.js` — toda la lógica del juego, un solo archivo, scope global, estado
+              mutable top-level (`board`, `current`, `next`, `score`, `lines`, `level`,
+              `paused`, `gameOver`, `dropInterval`, etc.), sin clases ni módulos.
+
+            Mecánicas clave en `game.js`:
+            - Board: matriz `ROWS x COLS`, celda `0` (vacía) o `1-7` (índice de color en `COLORS`).
+            - Piezas: matrices cuadradas hardcodeadas en `PIECES`. Rotación vía `rotateCW`
+              (transponer + invertir), no hay estados de rotación precalculados.
+            - Colisión: `collide(shape, ox, oy)` revisa límites y solapamiento contra `board`.
+            - Wall kicks: `tryRotate()` prueba offsets `[0, -1, 1, -2, 2]` tras rotar y se queda
+              con el primero que no colisiona.
+            - Loop: `loop(ts)` con `requestAnimationFrame`, acumula `dt` en `dropAccum`, baja
+              una fila cuando supera `dropInterval`.
+            - Limpieza de líneas: `clearLines()` recorre de abajo hacia arriba, hace `splice`
+              de filas completas y `unshift` de filas vacías arriba.
+            - Puntuación: `LINE_SCORES = [0, 100, 300, 500, 800]` x `level`; hard drop = 2
+              pts/celda, soft drop = 1 pt/fila.
+            - Nivel: `level = floor(lines / 10) + 1`; `dropInterval = max(100, 1000 - (level-1)*90)`.
+            - Ghost piece: `ghostY()` proyecta la pieza actual hacia abajo hasta su fila de
+              aterrizaje; se dibuja con `globalAlpha = 0.2`.
+            - Input: un solo listener `keydown` (flechas, `X` rota, `Space` hard drop, `P` pausa).
+
+            ## Objetivo
+
+            Analizar el issue, aplicarle las labels apropiadas y publicar (o actualizar) un
+            comentario con un diagnóstico técnico que sirva como base para implementar la
+            solución después.
+
+            ## Pasos a seguir
+
+            1. Lee el issue completo:
+               `gh issue view ${{ github.event.issue.number }} --json title,body,labels,author`
+
+            2. Investiga el código real del repo con Read/Grep/Glob sobre `game.js`,
+               `index.html` y `style.css` para localizar las funciones y líneas implicadas
+               en lo que reporta o pide el issue. Toda referencia a código en tu diagnóstico
+               debe ser `archivo:línea` real, verificada por ti — nunca inventada.
+
+            3. Gestiona las labels:
+               - Lista las existentes: `gh label list`.
+               - Reutiliza las que encajen (por ejemplo `bug`, `enhancement`, `documentation`,
+                 `question`, `invalid`, `duplicate`, `good first issue`, `help wanted`).
+               - Si hace falta una label que no existe, créala tú mismo:
+                 `gh label create "<nombre>" --color <hex-sin-#> --description "<desc>"`
+                 (si falla porque ya existe, ignora el error y continúa).
+               - Tienes libertad para crear las labels que consideres necesarias, pero
+                 mantén una taxonomía consistente usando prefijos como `area:`, `priority:`,
+                 `status:` en vez de inventar nombres sueltos cada vez.
+               - Aplica las labels elegidas:
+                 `gh issue edit ${{ github.event.issue.number }} --add-label "a,b,c"`.
+               - Si el issue es claramente spam, duplicado o inválido, aplica la label
+                 correspondiente (`invalid` / `duplicate`) y salta al paso 5 con un
+                 diagnóstico de una sola línea en vez del informe completo.
+
+            4. Redacta el diagnóstico en un archivo temporal (para evitar problemas de
+               escaping de markdown) con esta estructura exacta, empezando siempre por el
+               marcador HTML en la primera línea:
+
+               ```
+               <!-- claude-triage -->
+               ## 🔍 Diagnóstico automático
+
+               **Resumen** — 1-2 frases reformulando lo que pide o reporta el issue.
+               **Tipo** — bug / mejora / duda / documentación / inválido.
+               **Labels aplicadas** — lista con una línea de justificación para cada una.
+               **Zona del código** — funciones y `archivo:línea` implicados.
+               **Causa raíz probable** — para bugs; marca explícitamente como hipótesis si
+               no la puedes verificar solo leyendo el código.
+               **Reproducción** — pasos concretos; si el issue no da suficientes datos, di
+               qué falta.
+               **Criterios de aceptación** — lista verificable de cuándo se considera resuelto.
+               **Esbozo de solución** — qué cambiar y dónde, sin escribir el parche completo.
+               **Riesgos / efectos colaterales** — por ejemplo, tocar `BLOCK`/`COLS`/`ROWS`
+               obliga a ajustar el `<canvas>` en `index.html`.
+               **Información faltante** — si aplica, preguntas concretas al autor del issue.
+               ```
+
+            5. Publica el diagnóstico como comentario único y actualizable:
+               - Busca si ya existe un comentario tuyo anterior con el marcador:
+                 `gh api repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments --jq '.[] | select(.body | contains("<!-- claude-triage -->")) | .id'`
+               - Si existe un id, actualízalo (no crees uno nuevo):
+                 `gh api --method PATCH repos/${{ github.repository }}/issues/comments/<id> -f body=@<archivo-temporal>`
+               - Si no existe, crea uno nuevo:
+                 `gh issue comment ${{ github.event.issue.number }} --body-file <archivo-temporal>`
+
+            ## Reglas importantes
+
+            - NUNCA escribas la palabra "@claude" en el comentario ni en las labels: dispararía
+              en cascada el workflow que responde a menciones.
+            - No modifiques el título ni el cuerpo del issue.
+            - No toques archivos del repositorio, no crees ramas ni abras pull requests. Tu
+              trabajo termina en labels + un comentario de diagnóstico.
